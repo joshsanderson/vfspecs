@@ -2,7 +2,7 @@ FROM python:3.13-slim
 
 # Install ffmpeg
 RUN apt-get update && apt-get install -y ffmpeg build-essential
-
+RUN mkdir -p /tmp && chmod 777 /tmp
 # Set working directory
 WORKDIR /app
 
