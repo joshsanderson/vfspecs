@@ -1,7 +1,7 @@
 FROM python:3.13-slim
 
 # Install ffmpeg
-RUN apt-get update && apt-get install -y ffmpeg
+RUN apt-get update && apt-get install -y ffmpeg build-essential
 
 # Set working directory
 WORKDIR /app
