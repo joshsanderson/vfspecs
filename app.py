@@ -30,7 +30,7 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'  # Make sure to set a secure secret key
+app.secret_key = 'ThisIsMySecretKey'  # Make sure to set a secure secret key
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
