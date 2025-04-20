@@ -37,6 +37,8 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 print(f"UPLOAD_FOLDER exists: {os.path.exists(app.config['UPLOAD_FOLDER'])}")
 print(f"UPLOAD_FOLDER writable: {os.access(app.config['UPLOAD_FOLDER'], os.W_OK)}")
 
+
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -114,25 +116,42 @@ HTML_TEMPLATE = """
     <button onclick="exportToCSV()" class="copy-button">Export to CSV</button>
     <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     <script>
-        function uploadFiles() {
-            const input = document.getElementById('fileInput');
-            const files = input.files;
-            const formData = new FormData();
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
-            }
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log(data);
-            })
-            .catch(error => {
-                console.error('Error:', error);
-            });
+       function uploadFiles() {
+    const input = document.getElementById('fileInput');
+    const files = input.files;
+
+    if (files.length === 0) {
+        console.error("No files selected");
+        alert("Please select a file to upload.");
+        return;
+    }
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+
+    console.log("Uploading files:", files);
+
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        return response.json();
+    })
+    .then(data => {
+        console.log("Upload successful:", data);
+        alert("Upload successful!");
+    })
+    .catch(error => {
+        console.error("Error during upload:", error);
+        alert("Error during upload. Check the console for details.");
+    });
+}
     </script>
 </body>
 </html>
@@ -145,7 +164,7 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload():
     if 'files' not in request.files:
-        return 'No file part', 400
+       return 'No file part', 400
 
     files = request.files.getlist('files')
     results = []
@@ -171,6 +190,7 @@ def upload():
             os.remove(file_path)
 
     return {'results': results}, 200
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
