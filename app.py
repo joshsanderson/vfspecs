@@ -223,6 +223,22 @@ HTML_TEMPLATE = """
             };
             xhr.send(formData);
         });
+        // Initialize dark mode toggle based on system preference
+        
+    // Check and apply dark mode preference on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        const isDarkMode = localStorage.getItem('darkMode') === 'true';
+        if (isDarkMode) {
+            document.body.classList.add('dark-mode');
+        }
+    });
+
+    // Update toggleDarkMode function
+    function toggleDarkMode() {
+        const isDarkMode = document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', isDarkMode);
+    }
+
     </script>
 </body>
 </html>
