@@ -7,7 +7,7 @@ from io import StringIO
 import ffmpeg
 
 # Set up circular logging
-class CircularBufferHandlerf(logging.Handler):
+class CircularBufferHandler(logging.Handler):
     def __init__(self, capacity):
         logging.Handler.__init__(self)
         self.capacity = capacity
