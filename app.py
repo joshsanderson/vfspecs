@@ -33,6 +33,10 @@ app.secret_key = 'ThisIsMySecretKey'  # Make sure to set a secure secret key
 UPLOAD_FOLDER = '/tmp'  # Temporary directory for uploaded files
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# add a debug log to check if the upload folder exists and is writable
+print(f"UPLOAD_FOLDER exists: {os.path.exists(app.config['UPLOAD_FOLDER'])}")
+print(f"UPLOAD_FOLDER writable: {os.access(app.config['UPLOAD_FOLDER'], os.W_OK)}")
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
