@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 # Ensure this script has execute permissions:
-chmod +x startup.sh
+#chmod +x startup.sh
 # Install ffmpeg (if not already installed)
-apt-get update && apt-get install -y ffmpeg
+#apt-get update && apt-get install -y ffmpeg
 
 
 # Start the application using gunicorn
