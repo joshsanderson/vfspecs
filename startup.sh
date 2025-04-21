@@ -1,13 +1,11 @@
-# filepath: /Users/josh.sanderson/Library/CloudStorage/OneDrive-Vizio,Inc/DevProjects/VideoFileSpecifications/vfspecs/startup.sh
-
-
 #!/bin/bash
 set -e
-
-# Install ffmpeg (if not already installed)
-apt-get update && apt-get install -y ffmpeg
 # Ensure this script has execute permissions:
 chmod +x startup.sh
+# Install ffmpeg (if not already installed)
+apt-get update && apt-get install -y ffmpeg
+
+
 # Start the application using gunicorn
 gunicorn --bind=0.0.0.0:8000 --timeout 600 app:app
 
