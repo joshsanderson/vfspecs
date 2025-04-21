@@ -1,7 +1,9 @@
 import os
+import json
 import logging
-from flask import Flask, request, render_template_string
-from werkzeug.utils import secure_filename
+from flask import Flask, request, render_template_string, make_response, session
+import csv
+from io import StringIO
 import ffmpeg
 
 # Set up circular logging
@@ -29,18 +31,6 @@ logger.addHandler(handler)
 
 app = Flask(__name__)
 app.secret_key = 'ThisIsMySecretKey'  # Make sure to set a secure secret key
-
-UPLOAD_FOLDER = '/tmp'  # Temporary directory for uploaded files
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Ensure the upload folder exists and is writable
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    print(f"Created UPLOAD_FOLDER: {UPLOAD_FOLDER}")
-
-print(f"UPLOAD_FOLDER exists: {os.path.exists(app.config['UPLOAD_FOLDER'])}")
-print(f"UPLOAD_FOLDER writable: {os.access(app.config['UPLOAD_FOLDER'], os.W_OK)}")
-
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -119,42 +109,136 @@ HTML_TEMPLATE = """
     <button onclick="exportToCSV()" class="copy-button">Export to CSV</button>
     <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     <script>
-       function uploadFiles() {
-    const input = document.getElementById('fileInput');
-    const files = input.files;
-
-    if (files.length === 0) {
-        console.error("No files selected");
-        alert("Please select a file to upload.");
-        return;
-    }
-
-    const formData = new FormData();
-    for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i]);
-    }
-
-    console.log("Uploading files:", files);
-
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        function uploadFiles() {
+            const input = document.getElementById('fileInput');
+            const files = input.files;
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response;
+            })
+            .then(response => {
+                const reader = response.body.getReader();
+                return new ReadableStream({
+                    start(controller) {
+                        return pump();
+                        function pump() {
+                            return reader.read().then(({ done, value }) => {
+                                if (done) {
+                                    controller.close();
+                                    return;
+                                }
+                                controller.enqueue(value);
+                                return pump();
+                            });
+                        }
+                    }
+                });
+            })
+            .then(stream => new Response(stream))
+            .then(response => response.json())
+            .then(data => {
+                displayResults(data);
+                updateProgressBar(100);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
         }
-        return response.json();
-    })
-    .then(data => {
-        console.log("Upload successful:", data);
-        alert("Upload successful!");
-    })
-    .catch(error => {
-        console.error("Error during upload:", error);
-        alert("Error during upload. Check the console for details.");
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            data.forEach((file, index) => {
+                const fileContainer = document.createElement('div');
+                fileContainer.className = 'file-container';
+                for (const key in file) {
+                    const div = document.createElement('div');
+                    div.className = 'grid-item';
+                    div.textContent = `${key}: ${file[key]}`;
+                    fileContainer.appendChild(div);
+                }
+                resultsDiv.appendChild(fileContainer);
+            });
+        }
+        function copyToClipboard() {
+            const resultsDiv = document.getElementById('results');
+            const text = resultsDiv.innerText;
+            navigator.clipboard.writeText(text);
+        }
+        function exportToCSV() {
+            fetch('/download')
+                .then(response => response.blob())
+                .then(blob => {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'video_file_specifications.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                });
+        }
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+        function updateProgressBar(percent) {
+            const progressBar = document.getElementById('progressBarValue');
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+        }
+        // Function to handle the progress event
+        function handleProgress(event) {
+            if (event.lengthComputable) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                updateProgressBar(percent);
+            }
+        }
+        // Add event listener for upload progress
+        document.getElementById('fileInput').addEventListener('change', function() {
+            const files = this.files;
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', handleProgress, false);
+            xhr.open('POST', '/upload', true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    const data = JSON.parse(xhr.responseText);
+                    displayResults(data);
+                } else {
+                    console.error('Error uploading files');
+                }
+            };
+            xhr.send(formData);
+        });
+        // Initialize dark mode toggle based on system preference
+        
+    // Check and apply dark mode preference on page load
+    document.addEventListener('DOMContentLoaded', () => {
+        const isDarkMode = localStorage.getItem('darkMode') === 'true';
+        if (isDarkMode) {
+            document.body.classList.add('dark-mode');
+        }
     });
-}
+
+    // Update toggleDarkMode function
+    function toggleDarkMode() {
+        const isDarkMode = document.body.classList.toggle('dark-mode');
+        localStorage.setItem('darkMode', isDarkMode);
+    }
+
     </script>
 </body>
 </html>
@@ -166,38 +250,77 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload():
-    if 'files' not in request.files:
-       return 'No file part', 400
-
     files = request.files.getlist('files')
-    results = []
-
+    file_specs = []
+    total_size = 0
     for file in files:
-        if file.filename == '':
-            return 'No selected file', 400
+        file.save(file.filename)
+        probe = ffmpeg.probe(file.filename)
+        video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
+        audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+        if video_streams:
+            # Select the first video stream
+            video_stream = video_streams[0]
+            file_spec = {
+                "File name": file.filename,
+                "File size (MB)": round(os.path.getsize(file.filename) / (1024 * 1024), 1),
+                "File type": file.content_type,
+                "Bitrate (MBps)": round(int(video_stream.get('bit_rate', 0)) / (1024 * 1024), 2) if 'bit_rate' in video_stream else 'N/A',
+                "Dimensions": f"{video_stream.get('width', 'N/A')}x{video_stream.get('height', 'N/A')}" if 'width' in video_stream and 'height' in video_stream else 'N/A',
+                "Duration (seconds)": round(float(video_stream.get('duration', 0)), 2) if 'duration' in video_stream else 'N/A',
+                "Frame rate (FPS)": round(eval(video_stream.get('r_frame_rate', '0/1'))) if 'r_frame_rate' in video_stream else 'N/A',
+                "Has audio": bool(audio_streams),
+                "Width (pixels)": video_stream.get('width', 'N/A'),
+                "Height (pixels)": video_stream.get('height', 'N/A')
+            }
+            file_specs.append(file_spec)
+            total_size += os.path.getsize(file.filename)
+        os.remove(file.filename)
+    
+    # Log the session data
+    ip_address = request.remote_addr
+    num_files = len(files)
+    total_size_mb = round(total_size / (1024 * 1024), 1)
+    logger.info(f"IP: {ip_address}, Files tested: {num_files}, Total size uploaded: {total_size_mb} MB")
+    
+    # Store the file specifications in the session
+    session['file_specs'] = json.dumps(file_specs)
+    
+    return json.dumps(file_specs)
 
-        # Save the file to a temporary directory
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-
-        try:
-            # Use the full file path with ffmpeg.probe()
-            probe = ffmpeg.probe(file_path)
-            results.append(probe)
-        except ffmpeg.Error as e:
-            logger.error(f"ffprobe error: {e.stderr.decode('utf-8')}")
-            return f"ffprobe error: {e.stderr.decode('utf-8')}", 500
-        finally:
-            # Clean up the temporary file
-            os.remove(file_path)
-
-    return {'results': results}, 200
-
-# Health check endpoint
-@app.route('/health')
-def health():
-    return 'OK', 200
+@app.route('/download')
+def download():
+    si = StringIO()
+    cw = csv.writer(si)
+    
+    # Write the header
+    header = ["File name", "File size (MB)", "File type", "Bitrate (MBps)", "Dimensions", 
+              "Duration (seconds)", "Frame rate (FPS)", "Has audio", "Width (pixels)", "Height (pixels)"]
+    cw.writerow(header)
+    
+    # Fetch the data from the session
+    file_specs = json.loads(session.get('file_specs', '[]'))
+    
+    # Write the data rows
+    for file_spec in file_specs:
+        row = [
+            file_spec["File name"],
+            file_spec["File size (MB)"],
+            file_spec["File type"],
+            file_spec["Bitrate (MBps)"],
+            file_spec["Dimensions"],
+            file_spec["Duration (seconds)"],
+            file_spec["Frame rate (FPS)"],
+            file_spec["Has audio"],
+            file_spec["Width (pixels)"],
+            file_spec["Height (pixels)"]
+        ]
+        cw.writerow(row)
+    
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=video_file_specifications.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=80)
+    app.run(debug=True)
