@@ -244,7 +244,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-app = Flask(__name__)
+
 
 @app.route('/')
 def index():
