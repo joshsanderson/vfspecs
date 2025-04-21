@@ -2,7 +2,10 @@
 #!/bin/bash
 apt-get update
 apt-get install -y ffmpeg
-python3 app.py
+#python3 app.py
+gunicorn --bind=0.0.0:80 --timeout=600 --workers=4 app:app
+
+
 # This script updates the package list, installs ffmpeg, and then runs the Python application.
 # Ensure this script has execute permissions:
 # chmod +x startup.sh
