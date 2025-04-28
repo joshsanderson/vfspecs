@@ -16,6 +16,14 @@ WORKDIR /app
 # Copy project files
 COPY . /app
 
+#create a logs directory and files
+RUN mkdir -p /app/logs && chmod 777 /app/logs
+RUN touch /app/logs/access.log && chmod 777 /app/logs/access.log
+RUN touch /app/logs/error.log && chmod 777 /app/logs/error.log
+RUN touch /app/logs/ffmpeg.log && chmod 777 /app/logs/ffmpeg.log
+RUN touch /app/logs/ffmpeg_error.log && chmod 777 /app/logs/ffmpeg_error.log
+
+
 # Install dependencies
 RUN pip install -r requirements.txt
 
