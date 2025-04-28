@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 # Install ffmpeg (if not already installed)
-apt-get update && apt-get install -y ffmpeg
+apk add --no-cache ffmpeg
 
 
 # Start the application using gunicorn
