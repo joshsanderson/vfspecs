@@ -8,8 +8,6 @@ ENTRYPOINT ["/usr/local/bin/startup.sh"]
 RUN apt-get update && apt-get install -y ffmpeg 
 #build-essential
 RUN mkdir -p /tmp && chmod 777 /tmp
-#Debugging
-ls -l /usr/local/bin/startup.sh && file /usr/local/bin/startup.sh
 # Set working directory
 WORKDIR /app
 
