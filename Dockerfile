@@ -7,10 +7,9 @@ ENTRYPOINT ["/usr/local/bin/startup.sh"]
 # Install ffmpeg
 RUN apk add --no-cache ffmpeg
 
-#RUN pip install imageio[ffmpeg]
-
 #build-essential
 RUN mkdir -p /tmp && chmod 777 /tmp
+
 # Set working directory
 WORKDIR /app
 
