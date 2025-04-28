@@ -1,6 +1,6 @@
 FROM python:3.13.3-slim
 
-COPY startup.sh /usr/local/bin/startup.sh
+COPY ./startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 ENTRYPOINT ["/usr/local/bin/startup.sh"]
 
