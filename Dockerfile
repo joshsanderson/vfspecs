@@ -1,4 +1,4 @@
-FROM python:3.10.11-slim
+FROM python:3.10-slim-bullseye
 
 COPY startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
