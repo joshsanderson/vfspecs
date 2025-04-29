@@ -234,7 +234,15 @@ HTML_TEMPLATE = """
         }
 
         function toggleDarkMode() {
-def upload():ocument.body.classList.toggle('dark-mode');
+            document.body.classList.toggle('dark-mode');
+        }
+    </script>
+</body>
+</html>
+"""
+
+@app.route('/upload', methods=['POST'])
+def upload():
     files = request.files.getlist('files')
     file_specs = []
     total_size = 0
@@ -245,92 +253,79 @@ def upload():ocument.body.classList.toggle('dark-mode');
             
             # Generate a unique filename for the thumbnail
             thumbnail_filename = f"thumbnail_{uuid.uuid4().hex}.jpg"
-            /upload', methods=['POST'])
+            
             # Extract the first frame using FFmpeg
             ffmpeg.input(file.filename, ss=0).output(thumbnail_filename, vframes=1).run()
-            cs = []
+            
             # Probe the file with FFmpeg
             probe = ffmpeg.probe(file.filename)
             video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
             audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
-            logger.info(f"Saved file: {file.filename}")
+            
             if video_streams:
-                video_stream = video_streams[0]e thumbnail
-                file_spec = {e = f"thumbnail_{uuid.uuid4().hex}.jpg"
+                video_stream = video_streams[0]
+                file_spec = {
                     "File name": file.filename,
                     "File size (MB)": round(os.path.getsize(file.filename) / (1024 * 1024), 1),
-                    "File type": file.content_type,t(thumbnail_filename, vframes=1).run()
+                    "File type": file.content_type,
                     "Bitrate (MBps)": round(int(video_stream.get('bit_rate', 0)) / (1024 * 1024), 2) if 'bit_rate' in video_stream else 'N/A',
                     "Dimensions": f"{video_stream.get('width', 'N/A')}x{video_stream.get('height', 'N/A')}" if 'width' in video_stream and 'height' in video_stream else 'N/A',
                     "Duration (seconds)": round(float(video_stream.get('duration', 0)), 2) if 'duration' in video_stream else 'N/A',
                     "Frame rate (FPS)": round(float(Fraction(video_stream.get('r_frame_rate', '0/1')))),
-                    "Has audio": bool(audio_streams),be['streams'] if stream['codec_type'] == 'audio']
+                    "Has audio": bool(audio_streams),
                     "Width (pixels)": video_stream.get('width', 'N/A'),
                     "Height (pixels)": video_stream.get('height', 'N/A'),
                     "Thumbnail": thumbnail_filename  # Add thumbnail filename to the file spec
-                }ile_spec = {
-                file_specs.append(file_spec)me,
-                total_size += os.path.getsize(file.filename)file.filename) / (1024 * 1024), 1),
-        except ffmpeg.Error as e:file.content_type,
-            logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")_rate', 0)) / (1024 * 1024), 2) if 'bit_rate' in video_stream else 'N/A',
-            return json.dumps({"error": "Failed to process the video file. Please check the file format."}) if 'width' in video_stream and 'height' in video_stream else 'N/A',
-        finally:    "Duration (seconds)": round(float(video_stream.get('duration', 0)), 2) if 'duration' in video_stream else 'N/A',
-            os.remove(file.filename))": round(float(Fraction(video_stream.get('r_frame_rate', '0/1')))),
-            if os.path.exists(thumbnail_filename):                "Has audio": bool(audio_streams),
-                os.remove(thumbnail_filename) (pixels)": video_stream.get('width', 'N/A'),
-    ": video_stream.get('height', 'N/A'),
-    # Log the session datanail": thumbnail_filename  # Add thumbnail filename to the file spec
+                }
+                file_specs.append(file_spec)
+                total_size += os.path.getsize(file.filename)
+        except ffmpeg.Error as e:
+            logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
+            return json.dumps({"error": "Failed to process the video file. Please check the file format."})
+        finally:
+            os.remove(file.filename)
+            if os.path.exists(thumbnail_filename):
+                os.remove(thumbnail_filename)
+
+    # Log the session data
     ip_address = request.remote_addr
     num_files = len(files)
-    total_size_mb = round(total_size / (1024 * 1024), 1)            total_size += os.path.getsize(file.filename)
+    total_size_mb = round(total_size / (1024 * 1024), 1)
     logger.info(f"IP: {ip_address}, Files tested: {num_files}, Total size uploaded: {total_size_mb} MB")
-    .decode('utf-8')}")
-    # Store the file specifications in the session        return json.dumps({"error": "Failed to process the video file. Please check the file format."})
+
+    # Store the file specifications in the session
     session['file_specs'] = json.dumps(file_specs)
-                os.remove(file.filename)
     return json.dumps(file_specs)
-ession data
-@app.route('/download')quest.remote_addr
-def download():es)
-    si = StringIO()total_size_mb = round(total_size / (1024 * 1024), 1)
-    cw = csv.writer(si){ip_address}, Files tested: {num_files}, Total size uploaded: {total_size_mb} MB")
+
+@app.route('/download')
+def download():
+    si = StringIO()
+    cw = csv.writer(si)
     
     # Write the header
-    header = ["File name", "File size (MB)", "File type", "Bitrate (MBps)", "Dimensions", '] = json.dumps(file_specs)
+    header = ["File name", "File size (MB)", "File type", "Bitrate (MBps)", "Dimensions", 
               "Duration (seconds)", "Frame rate (FPS)", "Has audio", "Width (pixels)", "Height (pixels)"]
     cw.writerow(header)
     
-    # Fetch the data from the session.route('/download')
+    # Fetch the data from the session
     file_specs = json.loads(session.get('file_specs', '[]'))
     
-    # Write the data rowsiter(si)
+    # Write the data rows
     for file_spec in file_specs:
         row = [
-            file_spec.get("File name", "N/A"),File type", "Bitrate (MBps)", "Dimensions", 
-            file_spec.get("File size (MB)", "N/A"),S)", "Has audio", "Width (pixels)", "Height (pixels)"]
+            file_spec.get("File name", "N/A"),
+            file_spec.get("File size (MB)", "N/A"),
             file_spec.get("File type", "N/A"),
             file_spec.get("Bitrate (MBps)", "N/A"),
             file_spec.get("Dimensions", "N/A"),
-            file_spec.get("Duration (seconds)", "N/A"),specs', '[]'))
+            file_spec.get("Duration (seconds)", "N/A"),
             file_spec.get("Frame rate (FPS)", "N/A"),
             file_spec.get("Has audio", "N/A"),
-            file_spec.get("Width (pixels)", "N/A"),ile_spec in file_specs:
+            file_spec.get("Width (pixels)", "N/A"),
             file_spec.get("Height (pixels)", "N/A")
-        ]        file_spec.get("File name", "N/A"),
-        cw.writerow(row)", "N/A"),
+        ]
+        cw.writerow(row)
     
-    output = make_response(si.getvalue())A"),
-    output.headers["Content-Disposition"] = "attachment; filename=video_file_specifications.csv"spec.get("Dimensions", "N/A"),
-    output.headers["Content-type"] = "text/csv"            file_spec.get("Duration (seconds)", "N/A"),
-    return outpute (FPS)", "N/A"),
-("Has audio", "N/A"),
-@app.route('/thumbnails/<filename>')
-def thumbnails(filename):            file_spec.get("Height (pixels)", "N/A")
-    return send_from_directory(os.getcwd(), filename)
-
-
-
-    app.run(host='0.0.0.0', port=80)if __name__ == '__main__':    
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=video_file_specifications.csv"
     output.headers["Content-type"] = "text/csv"
