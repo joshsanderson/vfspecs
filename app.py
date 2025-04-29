@@ -6,8 +6,6 @@ import csv
 from io import StringIO
 from fractions import Fraction
 import ffmpeg
-import uuid  # For generating unique filenames for thumbnails
-from flask import send_from_directory
 
 # Set up circular logging
 class CircularBufferHandler(logging.Handler):
@@ -190,23 +188,11 @@ HTML_TEMPLATE = """
             data.forEach((file, index) => {
                 const fileContainer = document.createElement('div');
                 fileContainer.className = 'file-container';
-
-                // Add the thumbnail image
-                const thumbnail = document.createElement('img');
-                thumbnail.src = `/thumbnails/${file["Thumbnail"]}`;
-                thumbnail.alt = `Thumbnail for ${file["File name"]}`;
-                thumbnail.style.width = '100px'; // Set thumbnail width
-                thumbnail.style.height = 'auto'; // Maintain aspect ratio
-                fileContainer.appendChild(thumbnail);
-
-                // Add other file details
                 for (const key in file) {
-                    if (key !== "Thumbnail") {  // Skip the thumbnail key
-                        const div = document.createElement('div');
-                        div.className = 'grid-item';
-                        div.textContent = `${key}: ${file[key]}`;
-                        fileContainer.appendChild(div);
-                    }
+                    const div = document.createElement('div');
+                    div.className = 'grid-item';
+                    div.textContent = `${key}: ${file[key]}`;
+                    fileContainer.appendChild(div);
                 }
                 resultsDiv.appendChild(fileContainer);
             });
@@ -241,6 +227,10 @@ HTML_TEMPLATE = """
 </html>
 """
 
+@app.route('/')
+def index():
+    return render_template_string(HTML_TEMPLATE)
+
 @app.route('/upload', methods=['POST'])
 def upload():
     files = request.files.getlist('files')
@@ -250,12 +240,6 @@ def upload():
         try:
             file.save(file.filename)
             logger.info(f"Saved file: {file.filename}")
-            
-            # Generate a unique filename for the thumbnail
-            thumbnail_filename = f"thumbnail_{uuid.uuid4().hex}.jpg"
-            
-            # Extract the first frame using FFmpeg
-            ffmpeg.input(file.filename, ss=0).output(thumbnail_filename, vframes=1).run()
             
             # Probe the file with FFmpeg
             probe = ffmpeg.probe(file.filename)
@@ -274,8 +258,7 @@ def upload():
                     "Frame rate (FPS)": round(float(Fraction(video_stream.get('r_frame_rate', '0/1')))),
                     "Has audio": bool(audio_streams),
                     "Width (pixels)": video_stream.get('width', 'N/A'),
-                    "Height (pixels)": video_stream.get('height', 'N/A'),
-                    "Thumbnail": thumbnail_filename  # Add thumbnail filename to the file spec
+                    "Height (pixels)": video_stream.get('height', 'N/A')
                 }
                 file_specs.append(file_spec)
                 total_size += os.path.getsize(file.filename)
@@ -284,17 +267,16 @@ def upload():
             return json.dumps({"error": "Failed to process the video file. Please check the file format."})
         finally:
             os.remove(file.filename)
-            if os.path.exists(thumbnail_filename):
-                os.remove(thumbnail_filename)
-
+    
     # Log the session data
     ip_address = request.remote_addr
     num_files = len(files)
     total_size_mb = round(total_size / (1024 * 1024), 1)
     logger.info(f"IP: {ip_address}, Files tested: {num_files}, Total size uploaded: {total_size_mb} MB")
-
+    
     # Store the file specifications in the session
     session['file_specs'] = json.dumps(file_specs)
+    
     return json.dumps(file_specs)
 
 @app.route('/download')
@@ -330,10 +312,6 @@ def download():
     output.headers["Content-Disposition"] = "attachment; filename=video_file_specifications.csv"
     output.headers["Content-type"] = "text/csv"
     return output
-
-@app.route('/thumbnails/<filename>')
-def thumbnails(filename):
-    return send_from_directory(os.getcwd(), filename)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=80)
