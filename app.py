@@ -4,8 +4,8 @@ import logging
 from flask import Flask, request, render_template_string, make_response, session
 import csv
 from io import StringIO
-
-
+from fractions import Fraction
+import ffmpeg
 
 # Set up circular logging
 class CircularBufferHandler(logging.Handler):
@@ -125,34 +125,16 @@ HTML_TEMPLATE = """
                 if (!response.ok) {
                     throw new Error('Network response was not ok');
                 }
-                return response;
+                return response.json();
             })
-            .then(response => {
-                const reader = response.body.getReader();
-                return new ReadableStream({
-                    start(controller) {
-                        return pump();
-                        function pump() {
-                            return reader.read().then(({ done, value }) => {
-                                if (done) {
-                                    controller.close();
-                                    return;
-                                }
-                                controller.enqueue(value);
-                                return pump();
-                            });
-                        }
-                    }
-                });
-            })
-            .then(stream => new Response(stream))
-            .then(response => response.json())
             .then(data => {
                 displayResults(data);
                 updateProgressBar(100);
             })
             .catch(error => {
                 console.error('Error:', error);
+                const resultsDiv = document.getElementById('results');
+                resultsDiv.innerHTML = `<div class="grid-item">Error: ${error.message}</div>`;
             });
         }
         function displayResults(data) {
@@ -197,55 +179,10 @@ HTML_TEMPLATE = """
             progressBar.style.width = percent + '%';
             progressBar.textContent = percent + '%';
         }
-        // Function to handle the progress event
-        function handleProgress(event) {
-            if (event.lengthComputable) {
-                const percent = Math.round((event.loaded / event.total) * 100);
-                updateProgressBar(percent);
-            }
-        }
-        // Add event listener for upload progress
-        document.getElementById('fileInput').addEventListener('change', function() {
-            const files = this.files;
-            const formData = new FormData();
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
-            }
-            const xhr = new XMLHttpRequest();
-            xhr.upload.addEventListener('progress', handleProgress, false);
-            xhr.open('POST', '/upload', true);
-            xhr.onload = function() {
-                if (xhr.status === 200) {
-                    const data = JSON.parse(xhr.responseText);
-                    displayResults(data);
-                } else {
-                    console.error('Error uploading files');
-                }
-            };
-            xhr.send(formData);
-        });
-        // Initialize dark mode toggle based on system preference
-        
-    // Check and apply dark mode preference on page load
-    document.addEventListener('DOMContentLoaded', () => {
-        const isDarkMode = localStorage.getItem('darkMode') === 'true';
-        if (isDarkMode) {
-            document.body.classList.add('dark-mode');
-        }
-    });
-
-    // Update toggleDarkMode function
-    function toggleDarkMode() {
-        const isDarkMode = document.body.classList.toggle('dark-mode');
-        localStorage.setItem('darkMode', isDarkMode);
-    }
-
     </script>
 </body>
 </html>
 """
-
-
 
 @app.route('/')
 def index():
@@ -257,34 +194,36 @@ def upload():
     file_specs = []
     total_size = 0
     for file in files:
-        file.save(file.filename)
-        probe = ffmpeg.probe(file.filename)
+        try:
+            file.save(file.filename)
+            logger.info(f"Saved file: {file.filename}")
+            
+            # Probe the file with FFmpeg
+            probe = ffmpeg.probe(file.filename)
+            video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
+            audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+            
+            if video_streams:
+                video_stream = video_streams[0]
+                file_spec = {
+                    "File name": file.filename,
+                    "File size (MB)": round(os.path.getsize(file.filename) / (1024 * 1024), 1),
+                    "File type": file.content_type,
+                    "Bitrate (MBps)": round(int(video_stream.get('bit_rate', 0)) / (1024 * 1024), 2) if 'bit_rate' in video_stream else 'N/A',
+                    "Dimensions": f"{video_stream.get('width', 'N/A')}x{video_stream.get('height', 'N/A')}" if 'width' in video_stream and 'height' in video_stream else 'N/A',
+                    "Duration (seconds)": round(float(video_stream.get('duration', 0)), 2) if 'duration' in video_stream else 'N/A',
+                    "Frame rate (FPS)": round(float(Fraction(video_stream.get('r_frame_rate', '0/1')))),
+                    "Has audio": bool(audio_streams),
+                    "Width (pixels)": video_stream.get('width', 'N/A'),
+                    "Height (pixels)": video_stream.get('height', 'N/A')
+                }
+                file_specs.append(file_spec)
+                total_size += os.path.getsize(file.filename)
         except ffmpeg.Error as e:
-    logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
-    except ffmpeg.Error as e:
-    logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
-    return json.dumps({"error": "Failed to process the video file. Please check the file format."})
-    return json.dumps({"error": "Failed to process the video file. Please check the file format."})
-        video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
-        audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
-        if video_streams:
-            # Select the first video stream
-            video_stream = video_streams[0]
-            file_spec = {
-                "File name": file.filename,
-                "File size (MB)": round(os.path.getsize(file.filename) / (1024 * 1024), 1),
-                "File type": file.content_type,
-                "Bitrate (MBps)": round(int(video_stream.get('bit_rate', 0)) / (1024 * 1024), 2) if 'bit_rate' in video_stream else 'N/A',
-                "Dimensions": f"{video_stream.get('width', 'N/A')}x{video_stream.get('height', 'N/A')}" if 'width' in video_stream and 'height' in video_stream else 'N/A',
-                "Duration (seconds)": round(float(video_stream.get('duration', 0)), 2) if 'duration' in video_stream else 'N/A',
-                "Frame rate (FPS)": round(eval(video_stream.get('r_frame_rate', '0/1'))) if 'r_frame_rate' in video_stream else 'N/A',
-                "Has audio": bool(audio_streams),
-                "Width (pixels)": video_stream.get('width', 'N/A'),
-                "Height (pixels)": video_stream.get('height', 'N/A')
-            }
-            file_specs.append(file_spec)
-            total_size += os.path.getsize(file.filename)
-        os.remove(file.filename)
+            logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
+            return json.dumps({"error": "Failed to process the video file. Please check the file format."})
+        finally:
+            os.remove(file.filename)
     
     # Log the session data
     ip_address = request.remote_addr
@@ -313,16 +252,16 @@ def download():
     # Write the data rows
     for file_spec in file_specs:
         row = [
-            file_spec["File name"],
-            file_spec["File size (MB)"],
-            file_spec["File type"],
-            file_spec["Bitrate (MBps)"],
-            file_spec["Dimensions"],
-            file_spec["Duration (seconds)"],
-            file_spec["Frame rate (FPS)"],
-            file_spec["Has audio"],
-            file_spec["Width (pixels)"],
-            file_spec["Height (pixels)"]
+            file_spec.get("File name", "N/A"),
+            file_spec.get("File size (MB)", "N/A"),
+            file_spec.get("File type", "N/A"),
+            file_spec.get("Bitrate (MBps)", "N/A"),
+            file_spec.get("Dimensions", "N/A"),
+            file_spec.get("Duration (seconds)", "N/A"),
+            file_spec.get("Frame rate (FPS)", "N/A"),
+            file_spec.get("Has audio", "N/A"),
+            file_spec.get("Width (pixels)", "N/A"),
+            file_spec.get("Height (pixels)", "N/A")
         ]
         cw.writerow(row)
     
