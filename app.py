@@ -109,32 +109,47 @@ HTML_TEMPLATE = """
     <button onclick="exportToCSV()" class="copy-button">Export to CSV</button>
     <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     <script>
-        // Automatically upload files when selected
+        // Automatically upload files when selected with progress tracking
         document.getElementById('fileInput').addEventListener('change', function () {
             const files = this.files;
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) {
                 formData.append('files', files[i]);
             }
-            fetch('/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload', true);
+
+            // Update the progress bar
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    updateProgressBar(percentComplete);
                 }
-                return response.json();
-            })
-            .then(data => {
-                displayResults(data);
-                updateProgressBar(100);
-            })
-            .catch(error => {
-                console.error('Error:', error);
+            };
+
+            // Handle the response
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    const data = JSON.parse(xhr.responseText);
+                    displayResults(data);
+                    updateProgressBar(100); // Set progress bar to 100% on completion
+                } else {
+                    console.error('Error:', xhr.statusText);
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.innerHTML = `<div class="grid-item">Error: ${xhr.statusText}</div>`;
+                }
+            };
+
+            // Handle errors
+            xhr.onerror = function () {
+                console.error('Error during the upload.');
                 const resultsDiv = document.getElementById('results');
-                resultsDiv.innerHTML = `<div class="grid-item">Error: ${error.message}</div>`;
-            });
+                resultsDiv.innerHTML = `<div class="grid-item">Error during the upload.</div>`;
+            };
+
+            // Send the request
+            xhr.send(formData);
         });
 
         function displayResults(data) {
