@@ -1,11 +1,12 @@
 import os
 import json
 import logging
-from flask import Flask, request, render_template_string, make_response, session
+from flask import Flask, request, render_template_string, make_response, session, jsonify
 import csv
 from io import StringIO
 from fractions import Fraction
 import ffmpeg
+from threading import Lock
 
 # Set up circular logging
 class CircularBufferHandler(logging.Handler):
@@ -32,6 +33,10 @@ logger.addHandler(handler)
 
 app = Flask(__name__)
 app.secret_key = 'ThisIsMySecretKey'  # Make sure to set a secure secret key
+
+# Shared dictionary to track processing progress
+processing_progress = {}
+progress_lock = Lock()
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -119,7 +124,6 @@ HTML_TEMPLATE = """
     <button onclick="exportToCSV()" class="copy-button">Export to CSV</button>
     <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     <script>
-        // Automatically upload files when selected with progress tracking
         document.getElementById('fileInput').addEventListener('change', function () {
             const files = this.files;
             const formData = new FormData();
@@ -143,7 +147,7 @@ HTML_TEMPLATE = """
                 if (xhr.status === 200) {
                     const data = JSON.parse(xhr.responseText);
                     updateProgressBar('uploadProgressBarValue', 100); // Set upload progress bar to 100%
-                    processFiles(data); // Start processing files
+                    processFiles(data[0]["File name"]); // Start processing files
                 } else {
                     console.error('Error:', xhr.statusText);
                     const resultsDiv = document.getElementById('results');
@@ -162,24 +166,42 @@ HTML_TEMPLATE = """
             xhr.send(formData);
         });
 
-        function processFiles(data) {
-            // Simulate file processing progress
-            let percentComplete = 0;
+        function processFiles(fileId) {
             const interval = setInterval(() => {
-                percentComplete += 10; // Increment progress by 10%
-                updateProgressBar('processingProgressBarValue', percentComplete);
+                fetch(`/progress/${fileId}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to fetch progress');
+                        }
+                        return response.json();
+                    })
+                    .then(progressData => {
+                        const percentComplete = progressData.progress;
+                        updateProgressBar('processingProgressBarValue', percentComplete);
 
-                if (percentComplete >= 100) {
-                    clearInterval(interval); // Stop the interval when progress reaches 100%
-                    displayResults(data); // Display the results
-                }
-            }, 500); // Simulate processing time (adjust as needed)
+                        if (percentComplete >= 100) {
+                            clearInterval(interval); // Stop polling when progress reaches 100%
+                            fetchResults(); // Fetch and display results
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching progress:', error);
+                        clearInterval(interval); // Stop polling on error
+                    });
+            }, 500); // Poll every 500ms
         }
 
         function updateProgressBar(progressBarId, percent) {
             const progressBar = document.getElementById(progressBarId);
             progressBar.style.width = percent + '%';
             progressBar.textContent = percent + '%';
+        }
+
+        function fetchResults() {
+            fetch('/results')
+                .then(response => response.json())
+                .then(data => displayResults(data))
+                .catch(error => console.error('Error fetching results:', error));
         }
 
         function displayResults(data) {
@@ -238,14 +260,24 @@ def upload():
     total_size = 0
     for file in files:
         try:
+            file_id = file.filename  # Use the filename as a unique identifier
+            with progress_lock:
+                processing_progress[file_id] = 0  # Initialize progress to 0%
+
             file.save(file.filename)
             logger.info(f"Saved file: {file.filename}")
-            
+
+            with progress_lock:
+                processing_progress[file_id] = 25  # Step 1: File saved
+
             # Probe the file with FFmpeg
             probe = ffmpeg.probe(file.filename)
             video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
             audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
-            
+
+            with progress_lock:
+                processing_progress[file_id] = 50  # Step 2: FFmpeg probe complete
+
             if video_streams:
                 video_stream = video_streams[0]
                 file_spec = {
@@ -262,36 +294,50 @@ def upload():
                 }
                 file_specs.append(file_spec)
                 total_size += os.path.getsize(file.filename)
+
+            with progress_lock:
+                processing_progress[file_id] = 100  # Step 3: Processing complete
+
         except ffmpeg.Error as e:
             logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
             return json.dumps({"error": "Failed to process the video file. Please check the file format."})
         finally:
             os.remove(file.filename)
-    
+            with progress_lock:
+                processing_progress.pop(file_id, None)  # Remove progress tracking for this file
+
     # Log the session data
     ip_address = request.remote_addr
     num_files = len(files)
     total_size_mb = round(total_size / (1024 * 1024), 1)
     logger.info(f"IP: {ip_address}, Files tested: {num_files}, Total size uploaded: {total_size_mb} MB")
-    
+
     # Store the file specifications in the session
     session['file_specs'] = json.dumps(file_specs)
-    
+
     return json.dumps(file_specs)
+
+@app.route('/progress/<file_id>', methods=['GET'])
+def get_progress(file_id):
+    with progress_lock:
+        progress = processing_progress.get(file_id, None)
+    if progress is None:
+        return jsonify({"error": "File not found or processing complete"}), 404
+    return jsonify({"progress": progress})
 
 @app.route('/download')
 def download():
     si = StringIO()
     cw = csv.writer(si)
-    
+
     # Write the header
-    header = ["File name", "File size (MB)", "File type", "Bitrate (MBps)", "Dimensions", 
+    header = ["File name", "File size (MB)", "File type", "Bitrate (MBps)", "Dimensions",
               "Duration (seconds)", "Frame rate (FPS)", "Has audio", "Width (pixels)", "Height (pixels)"]
     cw.writerow(header)
-    
+
     # Fetch the data from the session
     file_specs = json.loads(session.get('file_specs', '[]'))
-    
+
     # Write the data rows
     for file_spec in file_specs:
         row = [
@@ -307,7 +353,7 @@ def download():
             file_spec.get("Height (pixels)", "N/A")
         ]
         cw.writerow(row)
-    
+
     output = make_response(si.getvalue())
     output.headers["Content-Disposition"] = "attachment; filename=video_file_specifications.csv"
     output.headers["Content-type"] = "text/csv"
