@@ -82,27 +82,37 @@ HTML_TEMPLATE = """
         #darkModeToggle {
             margin-top: 10px;
         }
-        #progressBar {
+        #uploadProgressBar, #processingProgressBar {
             width: 100%;
             height: 20px;
             background-color: #ddd;
             margin-top: 10px;
         }
-        #progressBarValue {
+        #uploadProgressBarValue, #processingProgressBarValue {
             width: 0%;
             height: 100%;
-            background-color: #4CAF50;
             text-align: center;
             line-height: 20px;
             color: white;
+        }
+        #uploadProgressBarValue {
+            background-color: #4CAF50;
+        }
+        #processingProgressBarValue {
+            background-color: #2196F3;
         }
     </style>
 </head>
 <body>
     <h1>Video File Specifications</h1>
     <input type="file" id="fileInput" multiple>
-    <div id="progressBar">
-        <div id="progressBarValue">0%</div>
+    <div id="uploadProgressBar">
+        <label for="uploadProgressBarValue">File Upload Progress:</label>
+        <div id="uploadProgressBarValue">0%</div>
+    </div>
+    <div id="processingProgressBar">
+        <label for="processingProgressBarValue">File Processing Progress:</label>
+        <div id="processingProgressBarValue">0%</div>
     </div>
     <div id="results" class="grid-container"></div>
     <button onclick="copyToClipboard()" class="copy-button">Copy to Clipboard</button>
@@ -120,11 +130,11 @@ HTML_TEMPLATE = """
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/upload', true);
 
-            // Update the progress bar
+            // Update the upload progress bar
             xhr.upload.onprogress = function (event) {
                 if (event.lengthComputable) {
                     const percentComplete = Math.round((event.loaded / event.total) * 100);
-                    updateProgressBar(percentComplete);
+                    updateProgressBar('uploadProgressBarValue', percentComplete);
                 }
             };
 
@@ -132,8 +142,8 @@ HTML_TEMPLATE = """
             xhr.onload = function () {
                 if (xhr.status === 200) {
                     const data = JSON.parse(xhr.responseText);
-                    displayResults(data);
-                    updateProgressBar(100); // Set progress bar to 100% on completion
+                    updateProgressBar('uploadProgressBarValue', 100); // Set upload progress bar to 100%
+                    processFiles(data); // Start processing files
                 } else {
                     console.error('Error:', xhr.statusText);
                     const resultsDiv = document.getElementById('results');
@@ -151,6 +161,26 @@ HTML_TEMPLATE = """
             // Send the request
             xhr.send(formData);
         });
+
+        function processFiles(data) {
+            // Simulate file processing progress
+            let percentComplete = 0;
+            const interval = setInterval(() => {
+                percentComplete += 10; // Increment progress by 10%
+                updateProgressBar('processingProgressBarValue', percentComplete);
+
+                if (percentComplete >= 100) {
+                    clearInterval(interval); // Stop the interval when progress reaches 100%
+                    displayResults(data); // Display the results
+                }
+            }, 500); // Simulate processing time (adjust as needed)
+        }
+
+        function updateProgressBar(progressBarId, percent) {
+            const progressBar = document.getElementById(progressBarId);
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+        }
 
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
@@ -191,12 +221,6 @@ HTML_TEMPLATE = """
 
         function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
-        }
-
-        function updateProgressBar(percent) {
-            const progressBar = document.getElementById('progressBarValue');
-            progressBar.style.width = percent + '%';
-            progressBar.textContent = percent + '%';
         }
     </script>
 </body>
