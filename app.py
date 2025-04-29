@@ -261,6 +261,9 @@ def upload():
         probe = ffmpeg.probe(file.filename)
         except ffmpeg.Error as e:
     logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
+    except ffmpeg.Error as e:
+    logger.error(f"FFmpeg error: {e.stderr.decode('utf-8')}")
+    return json.dumps({"error": "Failed to process the video file. Please check the file format."})
     return json.dumps({"error": "Failed to process the video file. Please check the file format."})
         video_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'video']
         audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
