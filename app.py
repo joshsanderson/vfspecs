@@ -101,7 +101,6 @@ HTML_TEMPLATE = """
 <body>
     <h1>Video File Specifications</h1>
     <input type="file" id="fileInput" multiple>
-    <button onclick="uploadFiles()">Upload</button>
     <div id="progressBar">
         <div id="progressBarValue">0%</div>
     </div>
@@ -110,9 +109,9 @@ HTML_TEMPLATE = """
     <button onclick="exportToCSV()" class="copy-button">Export to CSV</button>
     <button id="darkModeToggle" onclick="toggleDarkMode()">Toggle Dark Mode</button>
     <script>
-        function uploadFiles() {
-            const input = document.getElementById('fileInput');
-            const files = input.files;
+        // Automatically upload files when selected
+        document.getElementById('fileInput').addEventListener('change', function () {
+            const files = this.files;
             const formData = new FormData();
             for (let i = 0; i < files.length; i++) {
                 formData.append('files', files[i]);
@@ -136,7 +135,8 @@ HTML_TEMPLATE = """
                 const resultsDiv = document.getElementById('results');
                 resultsDiv.innerHTML = `<div class="grid-item">Error: ${error.message}</div>`;
             });
-        }
+        });
+
         function displayResults(data) {
             const resultsDiv = document.getElementById('results');
             resultsDiv.innerHTML = '';
@@ -152,11 +152,13 @@ HTML_TEMPLATE = """
                 resultsDiv.appendChild(fileContainer);
             });
         }
+
         function copyToClipboard() {
             const resultsDiv = document.getElementById('results');
             const text = resultsDiv.innerText;
             navigator.clipboard.writeText(text);
         }
+
         function exportToCSV() {
             fetch('/download')
                 .then(response => response.blob())
@@ -171,9 +173,11 @@ HTML_TEMPLATE = """
                     window.URL.revokeObjectURL(url);
                 });
         }
+
         function toggleDarkMode() {
             document.body.classList.toggle('dark-mode');
         }
+
         function updateProgressBar(percent) {
             const progressBar = document.getElementById('progressBarValue');
             progressBar.style.width = percent + '%';
