@@ -1,4 +1,4 @@
-flask
-ffmpeg-python
+Flask==2.3.2
+ffmpeg-python==0.2.0
 gunicorn
 werkzeug

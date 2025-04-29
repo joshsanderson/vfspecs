@@ -7,6 +7,8 @@ from io import StringIO
 from fractions import Fraction
 import ffmpeg
 from threading import Lock
+import re
+import threading
 
 # Set up circular logging
 class CircularBufferHandler(logging.Handler):
@@ -167,6 +169,7 @@ HTML_TEMPLATE = """
         });
 
         function processFiles(fileId) {
+            console.log(`Polling progress for file: ${fileId}`);
             const interval = setInterval(() => {
                 fetch(`/progress/${fileId}`)
                     .then(response => {
@@ -176,6 +179,7 @@ HTML_TEMPLATE = """
                         return response.json();
                     })
                     .then(progressData => {
+                        console.log(`Progress for ${fileId}: ${progressData.progress}%`);
                         const percentComplete = progressData.progress;
                         updateProgressBar('processingProgressBarValue', percentComplete);
 
@@ -185,7 +189,7 @@ HTML_TEMPLATE = """
                         }
                     })
                     .catch(error => {
-                        console.error('Error fetching progress:', error);
+                        console.error(`Error fetching progress for ${fileId}:`, error);
                         clearInterval(interval); // Stop polling on error
                     });
             }, 500); // Poll every 500ms
@@ -260,7 +264,7 @@ def upload():
     total_size = 0
     for file in files:
         try:
-            file_id = file.filename  # Use the filename as a unique identifier
+            file_id = re.sub(r'[^\w\-_\.]', '_', file.filename)  # Sanitize file_id
             with progress_lock:
                 processing_progress[file_id] = 0  # Initialize progress to 0%
 
@@ -303,8 +307,7 @@ def upload():
             return json.dumps({"error": "Failed to process the video file. Please check the file format."})
         finally:
             os.remove(file.filename)
-            with progress_lock:
-                processing_progress.pop(file_id, None)  # Remove progress tracking for this file
+            remove_file_id_after_delay(file_id)  # Delay removal of file_id
 
     # Log the session data
     ip_address = request.remote_addr
@@ -317,12 +320,17 @@ def upload():
 
     return json.dumps(file_specs)
 
+def remove_file_id_after_delay(file_id, delay=60):
+    threading.Timer(delay, lambda: processing_progress.pop(file_id, None)).start()
+
 @app.route('/progress/<file_id>', methods=['GET'])
 def get_progress(file_id):
     with progress_lock:
         progress = processing_progress.get(file_id, None)
     if progress is None:
+        logger.warning(f"Progress not found for file: {file_id}")
         return jsonify({"error": "File not found or processing complete"}), 404
+    logger.info(f"Progress for {file_id}: {progress}%")
     return jsonify({"progress": progress})
 
 @app.route('/download')
